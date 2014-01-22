@@ -1,0 +1,9 @@
+1. YAW/Pitch/Roll change slowly after startup. Should Let user know when it finished. (Back Light flash in some state to indicate Initialize finished.)
+Maybe LED(GPIO13);
+
+2. Found RAW angel at beginning.
+
+3. Add a button for "Start".
+
+4. When tune_counter increased, LCD Back light flash.
+
