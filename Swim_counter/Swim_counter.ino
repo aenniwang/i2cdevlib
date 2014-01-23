@@ -1,4 +1,3 @@
-
 // I2C device class (I2Cdev) demonstration Arduino sketch for MPU6050 class using DMP (MotionApps v2.0)
 // 6/21/2012 by Jeff Rowberg <jeff@rowberg.net>
 // Updates should (hopefully) always be available at https://github.com/jrowberg/i2cdevlib
@@ -42,10 +41,15 @@ THE SOFTWARE.
 ===============================================
 */
 
+#define ENABLE_SD 1
+
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
 #include <LiquidCrystal.h>
 #include <MsTimer2.h>
+#ifdef ENABLE_SD
+#include <SD.h>
+#endif
 #include "I2Cdev.h"
 
 #include "MPU6050_6Axis_MotionApps20.h"
@@ -73,6 +77,9 @@ uint16_t timer_temp;
 // AD0 high = 0x69
 MPU6050 mpu;
 //MPU6050 mpu(0x69); // <-- use for AD0 high
+#ifdef ENABLE_SD
+File logFile ;
+#endif
 
 /* =========================================================================
    NOTE: In addition to connection 3.3v, GND, SDA, and SCL, this sketch
@@ -91,8 +98,6 @@ MPU6050 mpu;
    http://arduino.cc/forum/index.php/topic,109987.0.html
    http://code.google.com/p/arduino/issues/detail?id=958
  * ========================================================================= */
-
-
 
 // uncomment "OUTPUT_READABLE_QUATERNION" if you want to see the actual
 // quaternion components in a [w, x, y, z] format (not best for parsing
@@ -129,18 +134,21 @@ MPU6050 mpu;
 // format used for the InvenSense teapot demo
 //#define OUTPUT_TEAPOT
 
-#define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
+#define IO_LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 bool blinkState = false;
-#define LCD1602_RS 12   
-#define LCD1602_RW 11
-#define LCD1602_EN 10
-#define LCDD4 9
-#define LCDD5 8
-#define LCDD6 7
-#define LCDD7 6
-#define LCD_BL 5
+#define IO_LCD1602_RS 12   
+#define IO_LCD1602_RW 11
+#define IO_LCD1602_EN 10
+#define IO_LCDD4 9
+#define IO_LCDD5 8
+#define IO_LCDD6 7
+#define IO_LCDD7 6
+#define IO_LCD1602_BL 5
+
+#ifdef ENABLE_LCD
 // rs, enable, d4, d5, d6, d7 
-LiquidCrystal lcd(12, 10, 9, 8, 7, 6);
+LiquidCrystal lcd(IO_LCD1602_RS, IO_LCD1602_EN, IO_LCDD4, IO_LCDD5, IO_LCDD6, IO_LCDD7);
+#endif
 
 // MPU control/status vars
 bool dmpReady = false;  // set true if DMP init was successful
@@ -160,7 +168,7 @@ float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
 // packet structure for InvenSense teapot demo
-uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
+//uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
 volatile static uint16_t timer;
 // 100ms every time.
@@ -192,14 +200,15 @@ void fsm_check_started(VectorFloat*acc)
 float acc_max;
 #define REPEAT_COUNT 8
 #define timer_check_fsm timer_temp
+#ifdef ENABLE_LCD
     lcd.setCursor(0,1);
     lcd.print(direction_change_count);
+#endif
     acc_max = acc->x*acc->x+acc->y*acc->y+acc->z*acc->z;
-   // Serial.print("check_started: acc=");
-   // Serial.println(acc_max);
     if(acc_max>ACC_FOR_START)
     {
-     
+            /* At least 1.5 second interval less 
+             * than 6 seconds need to repeat a acc check.*/
             if(get_time(timer_check_fsm,timer)<15)
             {
                 return;
@@ -212,8 +221,9 @@ float acc_max;
                 if(direction_change_count>=REPEAT_COUNT)
                 {
                     direction_change_count = 0;
-                    lcd.clear();
                     direction = YAW_FORWARD;
+#ifdef ENABLE_LCD
+                    lcd.clear();
                     lcd.setCursor(0,0);
                     lcd.print("D");
                     lcd.setCursor(2,0);
@@ -225,6 +235,7 @@ float acc_max;
                     lcd.print("R");
                     lcd.setCursor(12,0);
                     lcd.print(direction_change_count);
+#endif
                     is_fsm_update_begin=true;
                     return;
                 }
@@ -251,10 +262,12 @@ void fsm_update(VectorFloat*acc,Quaternion * q,float fsm_ypr)
     else if(y<-M_PI)
         y=2*M_PI+y;
 
+#ifdef ENABLE_LCD
     lcd.setCursor(0,1);
     lcd.print("Angel");
     lcd.setCursor(6,1);
     lcd.print(y*180/M_PI);
+#endif
     
 // debug
 //    Serial.print(ypr_direction*180/M_PI);
@@ -272,7 +285,9 @@ void fsm_update(VectorFloat*acc,Quaternion * q,float fsm_ypr)
 
     if(first_time)
     {
+#ifdef ENABLE_LCD
         bl_set_on();
+#endif
         first_time = false;
         last_direction = current_direction;
         direction_change_count = 0;
@@ -290,6 +305,7 @@ void fsm_update(VectorFloat*acc,Quaternion * q,float fsm_ypr)
                 direction_change_count++;
                 direction = current_direction;
 
+#ifdef ENABLE_LCD
                 bl_set_on();
                 lcd.setCursor(0,0);
                 lcd.print("D");
@@ -302,6 +318,7 @@ void fsm_update(VectorFloat*acc,Quaternion * q,float fsm_ypr)
                 lcd.print("R");
                 lcd.setCursor(12,0);
                 lcd.print(direction_change_count);
+#endif
                 //            Serial.print("Direction changed, count=");
                 //            Serial.println(direction_change_count);
                 /* Direction changed!*/
@@ -328,13 +345,78 @@ void dmpDataReady() {
 // ================================================================
 
 uint16_t schedule_timer;
+uint16_t sd_sync_schedule_timer;
 void setup() {
+    // initialize serial communication
+    // (115200 chosen because it is required for Teapot Demo output, but it's
+    // really up to you depending on your project)
+    Serial.begin(115200);
+    while (!Serial); // wait for Leonardo enumeration, others continue immediately
+
     // lcd
-    pinMode(LCD1602_RW, OUTPUT);
-    digitalWrite(LCD1602_RW, LOW);
-    pinMode(LCD_BL,OUTPUT);
-    digitalWrite(LCD_BL, HIGH);
+#ifdef ENABLE_LCD
+    pinMode(IO_LCD1602_RW, OUTPUT);
+    digitalWrite(IO_LCD1602_RW, LOW);
+    pinMode(IO_LCD1602_BL,OUTPUT);
+    digitalWrite(IO_LCD1602_BL, HIGH);
     lcd.begin(16,2);
+#endif
+
+#ifdef ENABLE_SD
+    //
+    // Initialize SD
+#define IO_SD_SPI_CS 4
+    Serial.print("Initializing SD card...");
+    pinMode(10, OUTPUT);
+
+#ifdef ENABLE_LCD
+    //
+    // LCD_STATUS BIT 14
+    // 'E' - SD Failed
+    // 'S' - SD OK
+    // 'W' - SD Writing
+    lcd.setCursor(13,0);
+    lcd.print("E");
+#endif
+    if (!SD.begin(IO_SD_SPI_CS)) {
+        Serial.println("initialization failed!");
+        return;
+    }
+    Serial.println("initialization done.");
+#if 0
+    if(SD.exists("MPU.txt"))
+    {
+        logFile = SD.open("test.txt");
+    }
+    else
+#endif
+    {
+        logFile = SD.open("MPU.txt", FILE_WRITE);
+    }
+    if (logFile) {
+        Serial.println("Create a MPU.txt");
+    } else {
+        // if the file didn't open, print an error:
+        Serial.println("error opening test.txt");
+    }
+#if 0
+    // read from the file until there's nothing else in it:
+    while (logFile.available()) {
+        logFile.read();
+    }
+#endif
+    
+    if(logFile)
+    {
+        logFile.println("-----------------------------------------------");
+        logFile.println("A NEW LOG FILE");
+        logFile.println("-----------------------------------------------");
+    }
+#ifdef ENABLE_LCD
+    lcd.print("S");
+#endif
+#endif
+
     // join I2C bus (I2Cdev library doesn't do this automatically)
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
         Wire.begin();
@@ -343,18 +425,12 @@ void setup() {
         Fastwire::setup(400, true);
     #endif
 
-    // initialize serial communication
-    // (115200 chosen because it is required for Teapot Demo output, but it's
-    // really up to you depending on your project)
-    Serial.begin(115200);
-    while (!Serial); // wait for Leonardo enumeration, others continue immediately
 
     // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3v or Ardunio
     // Pro Mini running at 3.3v, cannot handle this baud rate reliably due to
     // the baud timing being too misaligned with processor ticks. You must use
     // 38400 or slower in these cases, or use some kind of external separate
     // crystal solution for the UART timer.
-
 
     MsTimer2::set(TIMER_INTERVAL_MS - TIMER_INTERVAL_ADJ_MS, updatetimer);
 
@@ -410,17 +486,18 @@ void setup() {
     }
 
     // configure LED for output
-    pinMode(LED_PIN, OUTPUT);
+    pinMode(IO_LED_PIN, OUTPUT);
 
     MsTimer2::start();
     schedule_timer = timer;
+    sd_sync_schedule_timer = timer;
 }
-
+#ifdef ENABLE_LCD
 uint16_t timer_bl;
 #define BL_ON_MS 40
 void bl_set_on()
 {
-    digitalWrite(LCD_BL, HIGH);
+    digitalWrite(IO_LCD1602_BL, HIGH);
     timer_bl =timer;
 }
 
@@ -430,16 +507,17 @@ void bl_schedule()
     {
         if(get_time(timer_bl,timer)>BL_ON_MS)
         {
-            digitalWrite(LCD_BL, HIGH);
-//            digitalWrite(LCD_BL, LOW);
+            digitalWrite(IO_LCD1602_BL, HIGH);
+//            digitalWrite(IO_LCD1602_BL, LOW);
 
             timer_bl = 0;
         }
     }
     else
-        //digitalWrite(LCD_BL,LOW);
-        digitalWrite(LCD_BL,HIGH);
+        //digitalWrite(IO_LCD1602_BL,LOW);
+        digitalWrite(IO_LCD1602_BL,HIGH);
 }
+#endif
 
 void yaw_auto_adjust(float ypr)
 {
@@ -457,23 +535,29 @@ void yaw_auto_adjust(float ypr)
         Serial.print(ypr_direction);
        Serial.print("\t");
         Serial.println(ypr);
+#ifdef ENABLE_LCD
         lcd.setCursor(0,0);
         lcd.print("YAW Adjust ...");
+#endif
 #define YAW_ADJUST_LIMITION (M_PI/360) // 1 degreen
         if(((ypr_direction>ypr) && (ypr_direction-ypr<YAW_ADJUST_LIMITION))
                 ||((ypr_direction<ypr)&&((ypr-ypr_direction)<YAW_ADJUST_LIMITION)))
         {
 //            Serial.println("Adjust finished.");
             is_yaw_adjusted = true;
+#ifdef ENABLE_LCD
             lcd.clear();
+#endif
             return ;
         }
 
         ypr_direction = ypr;
         timer_last = timer;
 
+#ifdef ENABLE_LCD
         lcd.setCursor(0,1);
         lcd.print(ypr_direction*180/M_PI);
+#endif
     }
 #undef timer_last
 }
@@ -482,6 +566,7 @@ void yaw_auto_adjust(float ypr)
 // ===                    MAIN PROGRAM LOOP                     ===
 // ================================================================
 bool zero_motion =false;
+bool bsync_sd=false;
 void loop() {
  
 RESTART:
@@ -489,7 +574,15 @@ RESTART:
     if (!dmpReady) return;
 
     // wait for MPU interrupt or extra packet(s) available
-    while (!mpuInterrupt && fifoCount < packetSize) {
+    while (bsync_sd ||( !mpuInterrupt && fifoCount < packetSize)) {
+#ifdef ENABLE_SD
+        if(bsync_sd && logFile)
+        {
+            logFile.flush();
+            bsync_sd = false;
+            goto RESTART;
+        }
+#endif
         // other program behavior stuff here
         // .
         // .
@@ -513,186 +606,89 @@ RESTART:
     if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
         // reset so we can continue cleanly
         mpu.resetFIFO();
-        Serial.println(F("FIFO overflow!"));
+        Serial.println("FIFO overflow!");
 
     }
     // otherwise, check for DMP data ready interrupt (this should happen frequently)
-     else if (mpuIntStatus & 0x02) {
+    else if (mpuIntStatus & 0x02) {
         // wait for correct available data length, should be a VERY short wait
         while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
 
         // read a packet from FIFO
         mpu.getFIFOBytes(fifoBuffer, packetSize);
-    #if 0
-        zero_motion =mpu.getIntZeroMotionStatus();
-        lcd.setCursor(15,0);
-        if(zero_motion)
-        {
-            Serial.println("zero motion");
-            lcd.print("Z");
-        }
-        else
-        {
-            lcd.print("M");
-         }
-#endif
+
         // track FIFO count here in case there is > 1 packet available
         // (this lets us immediately read more without waiting for an interrupt)
         fifoCount -= packetSize;
 
+        mpu.dmpGetQuaternion(&q, fifoBuffer);
+        mpu.dmpGetAccel(&aa, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 
-        #ifdef OUTPUT_READABLE_QUATERNION
-            // display quaternion values in easy matrix form: w x y z
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            Serial.print("quat\t");
-            Serial.print(q.w);
-            Serial.print("\t");
-            Serial.print(q.x);
-            Serial.print("\t");
-            Serial.print(q.y);
-            Serial.print("\t");
-            Serial.println(q.z);
-        #endif
+        if(!is_yaw_adjusted)
+        {
+            yaw_auto_adjust(ypr[0]);
+            goto RESTART;
+        }
 
-        #ifdef OUTPUT_READABLE_EULER
-            // display Euler angles in degrees
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetEuler(euler, &q);
-            Serial.print("euler\t");
-            Serial.print(euler[0] * 180/M_PI);
-            Serial.print("\t");
-            Serial.print(euler[1] * 180/M_PI);
-            Serial.print("\t");
-            Serial.println(euler[2] * 180/M_PI);
-        #endif
+        VectorFloat g;
+#if 1
+        g.x=aa.x/4096.0f;
+        g.y=aa.y/4096.0f;
+        g.z=aa.z/4096.0f;
+#endif
+        if(!is_fsm_update_begin)
+        {
+#ifdef ENABLE_LCD
+            lcd.setCursor(0,0);
+            lcd.print("Prepare");
+#endif
+            fsm_check_started(&g);
+        }
 
-        #ifdef OUTPUT_READABLE_YAWPITCHROLL
-            // display Euler angles in degrees
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-            Serial.print("ypr\t");
-            Serial.print(ypr[0] * 180/M_PI);
-            Serial.print("\t");
-            Serial.print(ypr[1] * 180/M_PI);
-            Serial.print("\t");
-            Serial.println(ypr[2] * 180/M_PI);
-        #endif
+        if(get_time(schedule_timer,timer)>2)
+        {
+            // Serial.println("Schedule fsm_update");
+            // Serial.print("ypr\t");
+            // Serial.print(ypr[0] * 180/M_PI);
+            // Serial.print("\t");
+            // Serial.print(ypr[1] * 180/M_PI);
+            // Serial.print("\t");
+            // Serial.println(ypr[2] * 180/M_PI);
 
-        #ifdef OUTPUT_READABLE_REALACCEL
-            // display real acceleration, adjusted to remove gravity
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetAccel(&aa, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-            Serial.print("areal\t");
-            Serial.print(aaReal.x);
-            Serial.print("\t");
-            Serial.print(aaReal.y);
-            Serial.print("\t");
-            Serial.println(aaReal.z);
-        #endif
-
-        #ifdef OUTPUT_READABLE_WORLDACCEL
-            // display initial world-frame acceleration, adjusted to remove gravity
-            // and rotated based on known orientation from quaternion
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetAccel(&aa, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-            mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
-            Serial.print("aworld\t");
-            Serial.print(aaWorld.x);
-            Serial.print("\t");
-            Serial.print(aaWorld.y);
-            Serial.print("\t");
-            Serial.println(aaWorld.z);
-        #endif
-    
-        #ifdef OUTPUT_TEAPOT
-            // display quaternion values in InvenSense Teapot demo format:
-            teapotPacket[2] = fifoBuffer[0];
-            teapotPacket[3] = fifoBuffer[1];
-            teapotPacket[4] = fifoBuffer[4];
-            teapotPacket[5] = fifoBuffer[5];
-            teapotPacket[6] = fifoBuffer[8];
-            teapotPacket[7] = fifoBuffer[9];
-            teapotPacket[8] = fifoBuffer[12];
-            teapotPacket[9] = fifoBuffer[13];
-            Serial.write(teapotPacket, 14);
-            teapotPacket[11]++; // packetCount, loops at 0xFF on purpose
-        #endif
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetAccel(&aa, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-
-            if(!is_yaw_adjusted)
+            if(is_fsm_update_begin)
             {
-                yaw_auto_adjust(ypr[0]);
-                goto RESTART;
+                fsm_update(&g,&q,ypr[0]);
+#ifdef ENABLE_LCD
+                bl_schedule();
+#endif
             }
+#ifdef ENABLE_SD
+            logFile.print(timer);logFile.print(" ## ");
+            logFile.print("ACC: ");
+            logFile.print(g.x);logFile.print(" ");
+            logFile.print(g.y);logFile.print(" ");
+            logFile.print(g.z);logFile.print(" ");
+            logFile.print("YPR: ");
+            logFile.print(ypr[0]);logFile.print(" ");
+            logFile.print(ypr[1]);logFile.print(" ");
+            logFile.println(ypr[2]);
+#endif
+            schedule_timer = timer;
+        }
 
-            VectorFloat g;
-            g.x=aa.x/4096.0f;
-            g.y=aa.y/4096.0f;
-            g.z=aa.z/4096.0f;
-            if(!is_fsm_update_begin)
-            {
-                lcd.setCursor(0,0);
-                lcd.print("Prepare");
-                fsm_check_started(&g);
-            }
-
-          //  Serial.print(aa.x);Serial.print("\t");
-           // Serial.print(aa.y);Serial.print("\t");
-           // Serial.print(aa.z);Serial.print("\n");
-           // mpu.dmpGetGravity(&gravity, &q);
-//            Serial.print("gravity: ");
- //           Serial.print(gravity.x);Serial.print("\t");
-  //          Serial.print(gravity.y);Serial.print("\t");
-   //         Serial.print(gravity.z);Serial.print("\n");
-
-         //   Serial.print("Acc: ");
-          //  Serial.print(g.x);Serial.print("\t");
-          //  Serial.print(g.y);Serial.print("\t");
-           // Serial.print(g.z);Serial.print("\t");
-           // Serial.print(g.x*g.x+g.y*g.y+g.z*g.z);Serial.print("\t");
-   //         g.rotate(&q);
-//            if(g.x>0.5||g.x<-0.5||g.y>0.5||g.y<-0.5||g.z>1.5||g.z<0.5)
- //           {
-  //              Serial.print("ROT:");
-   //             Serial.print(g.x);Serial.print("\t");
-    //            Serial.print(g.y);Serial.print("\t");
-     //           Serial.print(g.z);Serial.print("\n");
-      //      }
-//            mpu.dmpGetAccInWorld(&gravity,&q);
- //           Serial.print("gravity in world: ");
-  //          Serial.print(gravity.x);Serial.print("\t");
-   //         Serial.print(gravity.y);Serial.print("\t");
-   //         Serial.print(gravity.z);Serial.print("\n");
-            if(get_time(schedule_timer,timer)>2)
-            {
-               // Serial.println("Schedule fsm_update");
-               // Serial.print("ypr\t");
-               // Serial.print(ypr[0] * 180/M_PI);
-               // Serial.print("\t");
-               // Serial.print(ypr[1] * 180/M_PI);
-                //Serial.print("\t");
-                //Serial.println(ypr[2] * 180/M_PI);
-                
-                if(is_fsm_update_begin)
-                {
-                    fsm_update(&g,&q,ypr[0]);
-                    bl_schedule();
-                }
-                schedule_timer = timer;
-            }
+#ifdef ENABLE_SD
+        if(get_time(sd_sync_schedule_timer,timer)>100)
+        {
+            bsync_sd = true;
+            sd_sync_schedule_timer = timer;
+        }
+#endif
         // blink LED to indicate activity
         blinkState = !blinkState;
-        digitalWrite(LED_PIN, blinkState);
+        digitalWrite(IO_LED_PIN, blinkState);
     }
 }
 /////////////////////////////////////////////////////////
  
-
